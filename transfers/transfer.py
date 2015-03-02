@@ -180,7 +180,7 @@ def run_scripts(directory, *args):
             LOGGER.warning('stderr: %s', stderr)
 
 
-def get_next_transfer(ss_url, ts_location_uuid, path_prefix, depth, completed):
+def get_next_transfer(ss_url, ts_location_uuid, path_prefix, depth, completed, see_files):
     """
     Helper to find the first directory that doesn't have an associated transfer.
 
@@ -189,6 +189,7 @@ def get_next_transfer(ss_url, ts_location_uuid, path_prefix, depth, completed):
     :param path_prefix: Relative path inside the Location to work with.
     :param depth: Depth relative to path_prefix to create a transfer from. Should be 1 or greater.
     :param set completed: Set of the paths of completed transfers. Ideally, relative to the same transfer source location, including the same path_prefix, and at the same depth.
+    :param bool see_files: Return files as well as folders to become transfers.
     :returns: Path relative to TS Location of the new transfer
     """
     # Get sorted list from source dir
@@ -199,7 +200,10 @@ def get_next_transfer(ss_url, ts_location_uuid, path_prefix, depth, completed):
     browse_info = _call_url_json(url, params)
     if browse_info is None:
         return None
-    dirs = browse_info['directories']
+    if see_files:
+        dirs = browse_info['entries']
+    else:
+        dirs = browse_info['directories']
     dirs = [base64.b64decode(d) for d in dirs]
     LOGGER.debug('Dirs: %s', dirs)
     dirs = [os.path.join(path_prefix, d) for d in dirs]
@@ -219,13 +223,13 @@ def get_next_transfer(ss_url, ts_location_uuid, path_prefix, depth, completed):
         # Recurse on each directory
         for d in dirs:
             LOGGER.debug('New path: %s', d)
-            target = get_next_transfer(ss_url, ts_location_uuid, d, depth - 1, completed)
+            target = get_next_transfer(ss_url, ts_location_uuid, d, depth - 1, completed, see_files)
             if target:
                 return target
     return None
 
 
-def start_transfer(ss_url, ts_location_uuid, ts_path, depth, am_url, user_name, api_key, transfer_type, session):
+def start_transfer(ss_url, ts_location_uuid, ts_path, depth, am_url, user_name, api_key, transfer_type, see_files, session):
     """
     Starts a new transfer.
 
@@ -236,12 +240,13 @@ def start_transfer(ss_url, ts_location_uuid, ts_path, depth, am_url, user_name, 
     :param am_url: URL of Archivematica pipeline to start transfer on
     :param user_name: User on Archivematica for authentication
     :param api_key: API key for user on Archivematica for authentication
+    :param bool see_files: If true, start transfers from files as well as directories
     :param session: SQLAlchemy session with the DB
     :returns: Tuple of Transfer information about the new transfer or None on error.
     """
     # Start new transfer
     completed = {x[0] for x in session.query(Unit.path).all()}
-    target = get_next_transfer(ss_url, ts_location_uuid, ts_path, depth, completed)
+    target = get_next_transfer(ss_url, ts_location_uuid, ts_path, depth, completed, see_files)
     if not target:
         LOGGER.warning("All potential transfers in %s have been created. Exiting", ts_path)
         return None
@@ -338,7 +343,7 @@ def approve_transfer(directory_name, url, api_key, user_name):
     else:
         return None
 
-def main(user, api_key, ts_uuid, ts_path, depth, am_url, ss_url, transfer_type):
+def main(user, api_key, ts_uuid, ts_path, depth, am_url, ss_url, transfer_type, see_files):
     LOGGER.info("Waking up")
     session = Session()
 
@@ -403,7 +408,7 @@ def main(user, api_key, ts_uuid, ts_path, depth, am_url, ss_url, transfer_type):
     # If failed, rejected, completed etc, start new transfer
     if current_unit:
         current_unit.current = False
-    new_transfer = start_transfer(ss_url, ts_uuid, ts_path, depth, am_url, user, api_key, transfer_type, session)
+    new_transfer = start_transfer(ss_url, ts_uuid, ts_path, depth, am_url, user, api_key, transfer_type, see_files, session)
 
     session.commit()
     os.remove(pid_file)
@@ -420,7 +425,7 @@ if __name__ == '__main__':
     parser.add_argument('--am-url', '-a', metavar='URL', help='Archivematica URL. Default: http://127.0.0.1', default='http://127.0.0.1')
     parser.add_argument('--ss-url', '-s', metavar='URL', help='Storage Service URL. Default: http://127.0.0.1:8000', default='http://127.0.0.1:8000')
     parser.add_argument('--transfer-type', metavar='TYPE', help="Type of transfer to start. One of: 'standard' (default), 'unzipped bag', 'zipped bag', 'dspace'.", default='standard', choices=['standard', 'unzipped bag', 'zipped bag', 'dspace'])
-    parser.add_argument('--files', action='store_true', help='Start transfers from files as well as folders. Unimplemented.')
+    parser.add_argument('--files', action='store_true', help='If set, start transfers from files as well as folders.')
     args = parser.parse_args()
 
     sys.exit(main(
@@ -431,5 +436,6 @@ if __name__ == '__main__':
         depth=args.depth,
         am_url=args.am_url,
         ss_url=args.ss_url,
-        transfer_type=args.transfer_type
+        transfer_type=args.transfer_type,
+        see_files=args.files,
     ))
