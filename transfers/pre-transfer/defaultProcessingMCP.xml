@@ -1,5 +1,16 @@
 <processingMCP>
   <preconfiguredChoices>
+    <!-- MoMA customizations -->
+    <!-- 1. normalization approval -->
+    <preconfiguredChoice>
+      <appliesTo>150dcb45-46c3-4529-b35f-b0a8a5a553e9</appliesTo>
+      <goToChain>2256d500-a26e-438d-803d-3ffe17b8caf0</goToChain>
+    </preconfiguredChoice>
+    <!-- 2. upload DIP to DRMC aka Binder -->
+    <preconfiguredChoice>
+      <appliesTo>92879a29-45bf-4f0b-ac43-e64474f0f2f9</appliesTo>
+      <goToChain>0fe9842f-9519-4067-a691-8a363132ae24</goToChain>
+    </preconfiguredChoice>
     <preconfiguredChoice>
       <appliesTo>755b4177-c587-41a7-8c52-015277568302</appliesTo>
       <goToChain>d4404ab1-dc7f-4e9e-b1f8-aa861e766b8e</goToChain>
