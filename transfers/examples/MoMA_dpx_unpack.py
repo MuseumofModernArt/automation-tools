@@ -16,7 +16,13 @@
 – grab the MD5
 - write "data/"+[ filename path from DFXML ], a tab space, and then the MD5 (one line per file)
 
+
+- run 'mmls' (tsk tool) to see if there is a volume map
+	- if there is, get the byte offset
 - subprocess: tsk_recover -v -a [disk image] [destination]
+
+
+two min per 1,000 files
 
 - move DPX folders to their appropriate component dir
 - continue ?
