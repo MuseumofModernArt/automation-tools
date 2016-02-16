@@ -7,6 +7,7 @@ import os
 import sys
 import urllib2
 import ast
+import csv
 
 def main(transfer_path):
     basename = os.path.basename(transfer_path)
@@ -14,9 +15,9 @@ def main(transfer_path):
         comp_num, comp_id, obj_id = basename.split('---')
     except ValueError:
         return 1
-    print('Component Number: ', comp_num, end='')
-    print('Component ID: ', comp_id, end='')
-    print('Object ID: ', obj_id, end='')
+    # print('Component Number: ', comp_num, end='')
+    # print('Component ID: ', comp_id, end='')
+    # print('Object ID: ', obj_id, end='')
 
     # get the object metadata
     object_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetTombstoneDataRest/ObjectID/"+obj_id
@@ -69,32 +70,47 @@ def main(transfer_path):
         except KeyError:
             print ("nada")
 
-    metadata = [
-        {
+    # put everything in a dictionary
+    metadataDict = {
             'parts': 'objects',
             'dc.identifier': comp_num,
             'dc.title': dc_title,
             'dc.creator': dc_creator,
             'dc.date': dc_date,
             'dc.format': dc_format2,
-            'MoMA.objectID': dc_ident1,
-            'MoMA.objectNumber': dc_ident2,
-            'MoMA.classification': dc_format1,
-            'MoMA.componentName': componentName,
-            'MoMA.componentNumber': componentNumber,
-            'MoMA.componentID': componentID,
-            'MoMA.componentCreatedDate': componentDate,
-            'MoMA.channels': componentChannels,
-            'MoMA.copyInSet': componentCopyinSet,
-            'MoMA.status': componentStatus,
+            'MoMAobjectID': dc_ident1,
+            'MoMAobjectNumber': dc_ident2,
+            'MoMAclassification': dc_format1,
+            'MoMAcomponentName': componentName,
+            'MoMAcomponentNumber': componentNumber,
+            'MoMAcomponentID': componentID,
+            'MoMAcomponentCreatedDate': componentDate,
+            'MoMAchannels': componentChannels,
+            'MoMAcopyInSet': componentCopyinSet,
+            'MoMAstatus': componentStatus,
         }
-    ]
+
+    cleanMetadataDict = dict((k, v) for k, v in metadataDict.iteritems() if v)
+    
+   
     metadata_path = os.path.join(transfer_path, 'metadata')
     if not os.path.exists(metadata_path):
         os.makedirs(metadata_path)
-    metadata_path = os.path.join(metadata_path, 'metadata.json')
-    with open(metadata_path, 'w') as f:
-        json.dump(metadata, f)
+    metadata_path = os.path.join(metadata_path, 'metadata.csv')
+    c = csv.writer(open(metadata_path, "wb"))
+    
+    keyList = []
+    valueList = []
+
+    for key, value in cleanMetadataDict.iteritems():
+      keyList.append(key)
+      valueList.append(value)
+
+    c.writerow(keyList)
+    c.writerow(valueList)  
+
+    # with open(metadata_path, 'w') as f:
+    #     json.dump(metadata, f)
     return 0
 
 if __name__ == '__main__':
