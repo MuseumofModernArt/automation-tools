@@ -3,14 +3,14 @@
 import argparse, hashlib, subprocess, StringIO, json, urllib2, os, glob, csv, ast
 
 '''
-- validate disk image, 
+- DONE: validate disk image, 
 
-- read DPX metadata file
-- for each line
-	- poll TMS object API endpoint, and get the correlating component include
-	- make directory named with component number --- component id --- object id (get from file name)
+- DONE: read DPX metadata file
+- DONE: for each line
+	- DONE: poll TMS object API endpoint, and get the correlating component include
+	- DONE: make directory named with component number --- component id --- object id (get from file name)
 
-- run fiwalk on disk image to get DFXML
+- DONE: run fiwalk on disk image to get DFXML
 - parse DPX CSV to find dir names of components
 - search DFXML for files that include these folder names in their paths
 
@@ -23,7 +23,6 @@ import argparse, hashlib, subprocess, StringIO, json, urllib2, os, glob, csv, as
 
 - move DPX folders to their appropriate component dir
 - continue ?
-
 '''
 
 parser = argparse.ArgumentParser(description="Tool for unpacking disk images at MoMA")
@@ -52,22 +51,7 @@ def conformance_check():
 	return (disk_images, csvs)
 
 
-	# for image in disk_images:
-	# 	if os.path.isfile(image):
-	# 		for image in disk_images:
-	# 			imagepath = image[:-3]
-	# 			print 'found this disk image: '+image
-	# 			if os.path.isfile(imagepath+'csv'):
-	# 				print 'found this corrseponding csv: '+imagepath+'csv'
-	# 				return disk_images
-	# 			else:
-	# 				return False
-
-
 # TMS STUFF
-
-# for row in csv, get object id and poll API
-
 def check_if_same(csvpath):
 	with open(csvpath, 'rb') as csvfile:
 		reader = csv.reader(csvfile, delimiter=',')
@@ -136,26 +120,81 @@ def tms_when_same(csvpath):
 			print "wasn't able to find all of the components from the CSV in TMS. Stopping here."
 			return False
 
+# For when the CSV indicates that the disk image contains material associated with more than one object record
+def tms_when_multiple_objects(csvpath):
+	with open(csvpath, 'rb') as csvfile:
+		reader = csv.reader(csvfile, delimiter=',')
+		reader = list(reader)
+		index = 1
+		previous_row_index = 1
 
-		# # get the component metadata
-		# # component_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetComponentDetails/Component/"+componentID
-		# # component_request = json.load(urllib2.urlopen(component_url))
+		objectnumber = reader[index][0]
 
-		# # put object metdata in its place
-		# dc_ident1 = object_request["GetTombstoneDataRestIdResult"]["ObjectID"]
-		# dc_ident2 = object_request["GetTombstoneDataRestIdResult"]["ObjectNumber"]
-		# dc_title = object_request["GetTombstoneDataRestIdResult"]["Title"]
-		# dc_creator = object_request["GetTombstoneDataRestIdResult"]["DisplayName"]
-		# dc_date = object_request["GetTombstoneDataRestIdResult"]["Dated"]
-		# dc_format1 = object_request["GetTombstoneDataRestIdResult"]["Classification"]
-		# dc_format2 = object_request["GetTombstoneDataRestIdResult"]["Medium"]
+		print "hitting the TMS API with Object Number: "+objectnumber
+		# get the object metadata
+		object_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetTombstoneDataRest/Object/"+objectnumber
+		object_request = json.load(urllib2.urlopen(object_url))
+		object_request = object_request["GetTombstoneDataRestResult"]
+		object_id = object_request["ObjectID"]
+		components = object_request['Components']
+		components = ast.literal_eval(components)
+		componentcounter = 0
+		dircounter = 0
+		dirlist = []
 
-		# # put component metadata in its place
-		# componentName = component_request["GetComponentDetailsResult"]["ComponentName"]
-		# componentNumber = component_request["GetComponentDetailsResult"]["ComponentNumber"]
-		# componentID = component_request["GetComponentDetailsResult"]["ComponentID"]
-		# Attributes = component_request["GetComponentDetailsResult"]["Attributes"]
-
+		while index < len(reader):
+			if reader[previous_row_index][0] == reader[index][0]:
+				componentnumber = reader[index][1]
+				componentnumber = componentnumber.strip()
+				componentcounter = componentcounter+1
+				for item in components:
+					# print item['ComponentNumber']
+					if item['ComponentNumber'] == componentnumber:
+						# print "found component number in json"
+						componentID = item['ComponentID']
+						dirname = str(componentnumber)+"---"+str(componentID)+"---"+str(object_id)
+						dircounter = dircounter+1
+						dirlist.append(dirname)
+						print dirname
+					# else:
+						# print item['ComponentNumber']+" is not the same as "+componentnumber
+			else:
+				componentnumber = reader[index][1]
+				componentnumber = componentnumber.strip()
+				componentcounter = componentcounter+1
+				print reader[previous_row_index][0]+" is not the same as "+reader[index][0]
+				objectnumber = reader[index][0]
+				componentnumber = reader[index][1]
+				componentnumber = componentnumber.strip()
+				print "hitting the TMS API with Object Number: "+objectnumber
+				# get the object metadata
+				object_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetTombstoneDataRest/Object/"+objectnumber
+				object_request = json.load(urllib2.urlopen(object_url))
+				object_request = object_request["GetTombstoneDataRestResult"]
+				object_id = object_request["ObjectID"]
+				components = object_request['Components']
+				components = ast.literal_eval(components)
+				for item in components:
+					# print item['ComponentNumber']
+					if item['ComponentNumber'] == componentnumber:
+						# print "found component number in json"
+						componentID = item['ComponentID']
+						dirname = str(componentnumber)+"---"+str(componentID)+"---"+str(object_id)
+						dircounter = dircounter+1
+						dirlist.append(dirname)
+						print dirname
+				# return False
+			# print reader[index]
+			index = index + 1
+			previous_row_index = index - 1
+		if componentcounter == dircounter == len(dirlist):
+			print "was able to find all components from the CSV in the TMS API. Making dirs now."
+			for item in dirlist:
+				os.makedirs(args.input+item, 0755)
+		else:
+			print "wasn't able to find all of the components from the CSV in TMS. Stopping here."
+			return False
+		return True
 
 
 
@@ -190,24 +229,42 @@ def validate_disk_images(imagepath):
 		return False
 
 
+def run_fiwalk(imagepath):
+	print "running fiwalk"
+	try:
+		out = subprocess.check_output(['fiwalk', '-X'+args.input+'tesssssting.xml', imagepath])
+		return out
+	except subprocess.CalledProcessError as e:
+		return e.output
 
+
+
+
+#####################
+#
+# main program flow
+#
 # check conformance, and if OK, validate the disk image(s)
 if conformance_check():
 	imagelist, csvlist = conformance_check()
 	print "passed conformance check. Proceeding to disk image validation"
 	# for image in imagelist:
 	# 	print validate_disk_images(image)
+	for csvpath in csvlist:
+		if check_if_same(csvpath):
+			print csvpath+" contains records that are all for the same object record"
+			tms_when_same(csvpath)
+		else:
+			print csvpath+" contains records that are for more than one object record"
+			tms_when_multiple_objects(csvpath)
+	for image in imagelist:
+		print run_fiwalk(image)
 else:
 	print "failed conformance check."
 	raise SystemExit
 
-for csvpath in csvlist:
-	if check_if_same(csvpath):
-		print csvpath+" contains records that are all for the same object record"
-		tms_when_same(csvpath)
-	else:
-		print csvpath+" contains records that are for more than one object record"
-# parse the CSV(s)
+
+
 
 
 # print check_if_same()
