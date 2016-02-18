@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-import argparse, hashlib, subprocess, StringIO, json, urllib2, os, glob, csv
+import argparse, hashlib, subprocess, StringIO, json, urllib2, os, glob, csv, ast
 
 '''
 - validate disk image, 
@@ -31,70 +31,111 @@ parser.add_argument('-i', '--input', type=str, help='path to disk image submissi
 args = parser.parse_args()
 
 
-# CONFORMANCE CHECKS
-# is the CSV there?
-# is the disk image there?
-# make sure there are only one of each
-def check_conformance():
-	csvpath = glob.glob(args.input+'*.csv')
-	disk_image = glob.glob(args.input+'*.E01')
+def conformance_check():
+	disk_images = glob.glob(args.input+'*.E01')
+	csvs = glob.glob(args.input+'*.csv')
 
-	if len(csvpath) == 1:
-		does_csv_exist = os.path.isfile(csvpath[0])
-	elif len(csvpath) < 1:
-		does_csv_exist = False
-	elif len(csvpath) > 1:
-		does_csv_exist = "too many CSVs!"
-	if len(disk_image) == 1:
-		does_E01_exist = os.path.isfile(disk_image[0])
-	elif len(disk_image) < 1:
-		does_E01_exist = False
-	elif len(disk_image) > 1:
-		does_E01_exist = "too many Disk Images!"
-	if len(disk_image) > 1 and len(csvpath) > 1:
-		does_csv_exist = "too many CSVs!"
-		does_E01_exist = "too many disk images!"
-		return (False, does_csv_exist, does_E01_exist,)
-	if does_E01_exist is True and does_csv_exist is True:
-		return (True, disk_image[0], csvpath[0])
-	elif does_E01_exist is True and does_csv_exist is False:
-		return (False, "CSV is missing")
-	elif does_E01_exist is False and does_csv_exist is True:
-		return (False, "E01 disk image is missing")
-	elif does_E01_exist is False and does_csv_exist is False:
-		return (False, "E01 disk image AND csv are missing")
-	elif does_csv_exist is not True and does_csv_exist is not False:
-		return (False, does_csv_exist)
-	elif does_E01_exist is not True and does_E01_exist is not False:
-		return (False, does_E01_exist)
+	for img in disk_images:
+		csvconvert = img[:-3]+'csv'
+		if csvconvert in csvs:
+			print "there is a CSV for every disk image"
+		else:
+			print img+" is missing a CSV"
+			return False
+	for csv in csvs:
+		imgconvert = csv[:-3]+'E01'
+		if imgconvert in disk_images:
+			print "there is a disk image for every CSV"
+		else:
+			print csv+" is missing a disk image"
+			return False
+	return (disk_images, csvs)
+
+
+	# for image in disk_images:
+	# 	if os.path.isfile(image):
+	# 		for image in disk_images:
+	# 			imagepath = image[:-3]
+	# 			print 'found this disk image: '+image
+	# 			if os.path.isfile(imagepath+'csv'):
+	# 				print 'found this corrseponding csv: '+imagepath+'csv'
+	# 				return disk_images
+	# 			else:
+	# 				return False
 
 
 # TMS STUFF
 
 # for row in csv, get object id and poll API
 
-def check_if_same():
+def check_if_same(csvpath):
 	with open(csvpath, 'rb') as csvfile:
 		reader = csv.reader(csvfile, delimiter=',')
 		reader = list(reader)
 		index = 1
 		previous_row_index = 1
 		while index < len(reader):
-			print len(reader)
-			print index
-			if reader[previous_row_index][0] == reader[index][0]:
-				print reader[previous_row_index][0]+" is the same as "+reader[index][0]
-			else:
-				print reader[index]
+			# print len(reader)
+			# print "starting loop this is the index:"+str(index)
+			# if reader[previous_row_index][0] == reader[index][0]:
+			# 	# print reader[previous_row_index][0]+" is the same as "+reader[index][0]
+			if reader[previous_row_index][0] != reader[index][0]:
 				print reader[previous_row_index][0]+" is not the same as "+reader[index][0]
 				return False
-			print reader[index]
-			previous_row_index = index - 1
+			# print reader[index]
 			index = index + 1
+			previous_row_index = index - 1
+		return True
+
+def tms_when_same(csvpath):
+	with open(csvpath, 'rb') as csvfile:
+		reader = csv.reader(csvfile, delimiter=',')
+		# get the object number
+		for i, row in enumerate(reader):
+			if i == 1:
+				objectnumber = row[0]
+
+		print "hitting the TMS API with Object Number: "+objectnumber
 
 		# get the object metadata
-		# object_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetTombstoneDataRest/ObjectID/"+objectID
-		# object_request = json.load(urllib2.urlopen(object_url))
+		object_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetTombstoneDataRest/Object/"+objectnumber
+		object_request = json.load(urllib2.urlopen(object_url))
+		object_request = object_request["GetTombstoneDataRestResult"]
+		object_id = object_request["ObjectID"]
+
+		components = object_request['Components']
+		components = ast.literal_eval(components)
+
+		csvfile.seek(0)
+
+		csvfile.readline()
+
+		componentcounter = 0
+		dircounter = 0
+		dirlist = []
+		for row in reader:
+			componentnumber = row[1]
+			componentnumber = componentnumber.strip()
+			componentcounter = componentcounter+1
+
+			for item in components:
+				if item['ComponentNumber'] == componentnumber:
+					# print "found component number in json"
+					componentID = item['ComponentID']
+					dirname = str(componentnumber)+"---"+str(componentID)+"---"+str(object_id)
+					dircounter = dircounter+1
+					dirlist.append(dirname)
+					print dirname
+				# else:
+				# 	print item['ComponentNumber']+" is not the same as "+componentnumber
+		if componentcounter == dircounter == len(dirlist):
+			print "was able to find all components from the CSV in the TMS API. Making dirs now."
+			for item in dirlist:
+				os.makedirs(args.input+item, 0755)
+		else:
+			print "wasn't able to find all of the components from the CSV in TMS. Stopping here."
+			return False
+
 
 		# # get the component metadata
 		# # component_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetComponentDetails/Component/"+componentID
@@ -120,52 +161,59 @@ def check_if_same():
 
 
 # DISK IMAGE STUFF
-def initiate_disk_image_validation():
+def initiate_disk_image_validation(imagepath):
 	try:
-		out = subprocess.check_output(['/Users/bfino/Downloads/ftkimager', '--verify', args.input])
+		out = subprocess.check_output(['/Users/bfino/Downloads/ftkimager', '--verify', imagepath])
 		return (out, True)
 	except subprocess.CalledProcessError as e:
 		return (e.output, False)
 
-def validate_disk_image():
-	out = process()
+def validate_disk_images(imagepath):
+	out = initiate_disk_image_validation(imagepath)
 	out2 = StringIO.StringIO(out[0])
 	lines = out2.readlines()
 	if out[1] == True:
-		md5result = lines[4]
-		sha1result = lines[9]
+		md5result = lines[3]
+		sha1result = lines[7]
 	elif out[1] == False:
 		md5result = lines[3]
 		sha1result = lines[7]
 
 	if "Match" in md5result and "Match" in sha1result:
 		print "MD5 and sha1 validated"
+		return True
 	elif "Mismatch" in md5result and "Mismatch" in sha1result:
 		print "MD5 and sha1 did not validate"
+		return False
 	else:
 		print "uncaught error or condition"
+		return False
 
-# validate_disk_image()
 
-if len(check_conformance()) == 3 and check_conformance()[0] is True:
-	print "everything checks out"
-	# print check_conformance()
-	disk_image_path = check_conformance()[1]
-	csvpath = check_conformance()[2]
-elif len(check_conformance()) == 2:
-	print "something is wrong: "+ check_conformance()[1]
+
+# check conformance, and if OK, validate the disk image(s)
+if conformance_check():
+	imagelist, csvlist = conformance_check()
+	print "passed conformance check. Proceeding to disk image validation"
+	# for image in imagelist:
+	# 	print validate_disk_images(image)
+else:
+	print "failed conformance check."
 	raise SystemExit
-elif len(check_conformance()) == 3:
-	print "something is wrong: "+ check_conformance()[1]+" and "+check_conformance()[2]
-	raise SystemExit
 
-print check_if_same()
+for csvpath in csvlist:
+	if check_if_same(csvpath):
+		print csvpath+" contains records that are all for the same object record"
+		tms_when_same(csvpath)
+	else:
+		print csvpath+" contains records that are for more than one object record"
+# parse the CSV(s)
 
-# i = 1
 
-# while i < 100000:
-# 	print i
-# 	i = i + 1
-# 	print "pretending to do stuff"
+# print check_if_same()
+
+# if check_if_same() is True:
+# 	tms_when_same()
+
 
 
