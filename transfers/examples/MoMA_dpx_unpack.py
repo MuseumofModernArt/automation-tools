@@ -40,6 +40,7 @@ parser.add_argument('-i', '--input', type=str, help='path to disk image submissi
 args = parser.parse_args()
 
 
+
 def conformance_check():
 	disk_images = glob.glob(args.input+'*.E01')
 	csvs = glob.glob(args.input+'*.csv')
@@ -125,7 +126,7 @@ def tms_when_same(csvpath):
 		if componentcounter == dircounter == len(dirlist):
 			print "was able to find all components from the CSV in the TMS API. Making dirs now."
 			for item in dirlist:
-				os.makedirs(args.input+item, 0755)
+				os.makedirs(args.input+item+'/data', 0755)
 			return dirlist
 		else:
 			print "wasn't able to find all of the components from the CSV in TMS. Stopping here."
@@ -201,7 +202,7 @@ def tms_when_multiple_objects(csvpath):
 		if componentcounter == dircounter == len(dirlist):
 			print "was able to find all components from the CSV in the TMS API. Making dirs now."
 			for item in dirlist:
-				os.makedirs(args.input+item, 0755)
+				os.makedirs(args.input+item+'/data', 0755)
 		else:
 			print "wasn't able to find all of the components from the CSV in TMS. Stopping here."
 			return False
@@ -276,19 +277,30 @@ def make_bag_from_DFXML(csvpath):
 					with open(csvpath, 'rb') as csvfile:
 						reader = csv.reader(csvfile, delimiter=',')
 						for row in reader:
-							if row[2] is in filename:
+							# print os.path.dirname(filename)
+							lengthOfBaseOfPath = len(os.path.dirname(row[2]))+1
+							csvpathhh = row[2]
+							trimmedCSVpath = csvpathhh[lengthOfBaseOfPath:]
+							if trimmedCSVpath in filename:
+								print trimmedCSVpath +" WAS FOUND "+filename
 								# get the path to the right compenent dir
-								bagmanifest = open('manifest-md5.txt', 'w')
-								compNum = row[1]
-								lengthOfBaseOfPath = len(os.path.dirname(thisdir))+1
-								trimmedFilename = thisdir[lengthOfBaseOfPath:]
-								destDir = glob.glob(args.input+compNum)
-								print destDir
-									# if trimmedFilename in filename:
-									# 	manifestLine = checksum.text+'  '+'data/'+filename+'\n'
-									# 	print manifestLine
-									# 	bagmanifest.write(manifestLine)
+								
+
+								### it is sort of working now - but it's just moving on to the next CSV row after it hits the first file
+								### I guess I'll have to iterate over all the files again??
+
+								compNum = row[1].strip()
+								print compNum
+								print args.input
+								destDir = glob.glob(args.input+compNum+'*')
+								print "destDir is:"
+								print destDir[0]
+								bagmanifest = open(destDir[0]+'/manifest-md5.txt', 'a')
+								manifestLine = checksum.text+'  '+'data/'+filename+'\n'
+								print manifestLine
+								bagmanifest.write(manifestLine)
 								bagmanifest.close()
+						csvfile.seek(0)
 
 
 #####################
