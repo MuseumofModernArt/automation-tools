@@ -1,6 +1,16 @@
 #!/usr/bin/env python2
 
-import argparse, hashlib, subprocess, StringIO, json, urllib2, os, glob, csv, ast
+import argparse
+import hashlib
+import subprocess
+import StringIO
+import json
+import urllib2
+import os
+import glob
+import csv
+import ast
+import xml.etree.ElementTree as ET
 
 '''
 - DONE: validate disk image, 
@@ -116,6 +126,7 @@ def tms_when_same(csvpath):
 			print "was able to find all components from the CSV in the TMS API. Making dirs now."
 			for item in dirlist:
 				os.makedirs(args.input+item, 0755)
+			return dirlist
 		else:
 			print "wasn't able to find all of the components from the CSV in TMS. Stopping here."
 			return False
@@ -232,12 +243,52 @@ def validate_disk_images(imagepath):
 def run_fiwalk(imagepath):
 	print "running fiwalk"
 	try:
-		out = subprocess.check_output(['fiwalk', '-X'+args.input+'tesssssting.xml', imagepath])
+		out = subprocess.check_output(['fiwalk', '-X'+args.input+'fiwalk.xml', imagepath])
 		return out
 	except subprocess.CalledProcessError as e:
 		return e.output
 
+def make_bag_from_DFXML(csvpath):
 
+
+	### right now, it is making one manifest -- how can I make it make one per component, and put it in the right folder?
+	### ok - i have the list of directories within the function now.
+	### now i just need to get this right.... I need to iterate the list within the DFXML stuff so as not to parse that file multiple times
+
+	tree = ET.parse('fiwalk.xml')
+	root = tree.getroot()
+	ns = "{http://www.forensicswiki.org/wiki/Category:Digital_Forensics_XML}"
+	for fileobject in root.iter(ns+'fileobject'):
+		## only do this for files, not dirs
+		filegen = (f for f in fileobject.iter(ns+'name_type') if f.text != 'd')
+		for f in filegen:
+			# for every allocated file that is an 'actual' file (not a directory, . or ..)
+			for allocationStatus in fileobject.iter(ns+'alloc'):
+				filename = fileobject[1].text
+				generator = (checksum for checksum in fileobject.iter(ns+'hashdigest') if checksum.attrib['type'] == 'md5')
+				for checksum in generator:
+					# for each file that is a real file with a checksum, 
+					# open the CSV
+					# for each row in the CSV
+						# see if row[2] is in filename (from DFXML)
+							# if it is, then find the dir that starts with the comp number for this CSV row
+							# write the manifest to this dir
+					with open(csvpath, 'rb') as csvfile:
+						reader = csv.reader(csvfile, delimiter=',')
+						for row in reader:
+							if row[2] is in filename:
+								# get the path to the right compenent dir
+								bagmanifest = open('manifest-md5.txt', 'w')
+								compNum = row[1]
+								lengthOfBaseOfPath = len(os.path.dirname(thisdir))+1
+								trimmedFilename = thisdir[lengthOfBaseOfPath:]
+								destDir = glob.glob(args.input+compNum)
+								print destDir
+									# if trimmedFilename in filename:
+									# 	manifestLine = checksum.text+'  '+'data/'+filename+'\n'
+									# 	print manifestLine
+									# 	bagmanifest.write(manifestLine)
+								bagmanifest.close()
 
 
 #####################
@@ -249,28 +300,21 @@ if conformance_check():
 	imagelist, csvlist = conformance_check()
 	print "passed conformance check. Proceeding to disk image validation"
 	# for image in imagelist:
+	# 	# will it exit / fail if image does not validate? it should
 	# 	print validate_disk_images(image)
+	for image in imagelist:
+		print run_fiwalk(image)
 	for csvpath in csvlist:
 		if check_if_same(csvpath):
 			print csvpath+" contains records that are all for the same object record"
 			tms_when_same(csvpath)
+			make_bag_from_DFXML(csvpath)
 		else:
 			print csvpath+" contains records that are for more than one object record"
 			tms_when_multiple_objects(csvpath)
-	for image in imagelist:
-		print run_fiwalk(image)
+
 else:
 	print "failed conformance check."
 	raise SystemExit
-
-
-
-
-
-# print check_if_same()
-
-# if check_if_same() is True:
-# 	tms_when_same()
-
 
 
