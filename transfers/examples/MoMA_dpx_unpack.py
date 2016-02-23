@@ -13,6 +13,8 @@ import ast
 import xml.etree.ElementTree as ET
 
 '''
+to-do:
+
 - DONE: validate disk image, 
 
 - DONE: read DPX metadata file
@@ -21,10 +23,10 @@ import xml.etree.ElementTree as ET
 	- DONE: make directory named with component number --- component id --- object id (get from file name)
 
 - DONE: run fiwalk on disk image to get DFXML
-- parse DPX CSV to find dir names of components
-- search DFXML for files that include these folder names in their paths
+- DONE parse DPX CSV to find dir names of components
+- DONE search DFXML for files that include these folder names in their paths
 
-- grab the MD5 - write hand assemble bag
+- DONE grab the MD5 - write hand assemble bag
 
 - run 'mmls' (tsk tool) to see if there is a volume map
 	- if there is, get the byte offset
@@ -284,10 +286,6 @@ def make_bag_from_DFXML(csvpath):
 							if trimmedCSVpath in filename:
 								print trimmedCSVpath +" WAS FOUND "+filename
 								# get the path to the right compenent dir
-								
-
-								### it is sort of working now - but it's just moving on to the next CSV row after it hits the first file
-								### I guess I'll have to iterate over all the files again??
 
 								compNum = row[1].strip()
 								print compNum
