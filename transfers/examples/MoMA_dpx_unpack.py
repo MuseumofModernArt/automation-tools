@@ -11,6 +11,7 @@ import glob
 import csv
 import ast
 import xml.etree.ElementTree as ET
+import datetime
 
 '''
 to-do:
@@ -26,19 +27,17 @@ to-do:
 - DONE parse DPX CSV to find dir names of components
 - DONE search DFXML for files that include these folder names in their paths
 
-- DONE grab the MD5 - write hand assemble bag
+- DONE grab the MD5 - write hand assembled bag using the fiwalk generated MD5s in the DFXML
 
 - run 'mmls' (tsk tool) to see if there is a volume map
 	- if there is, get the byte offset
-- subprocess: tsk_recover -v -a [disk image] [destination]
 
-
-- move DPX folders to their appropriate component dir
-- continue ?
+- DONE: subprocess: tsk_recover -v -a [disk image] [destination]
+- DONE move DPX folders to their appropriate component dir
 '''
 
 parser = argparse.ArgumentParser(description="Tool for unpacking disk images at MoMA")
-parser.add_argument('-i', '--input', type=str, help='path to disk image submission (dir, not img itself)')
+parser.add_argument('-i', '--input', required=True, type=str, help='path to disk image submission (dir, not img itself)')
 args = parser.parse_args()
 
 
@@ -300,6 +299,51 @@ def make_bag_from_DFXML(csvpath):
 								bagmanifest.close()
 						csvfile.seek(0)
 
+def expand_image(imagepath):
+	try:
+		out = subprocess.check_output(['tsk_recover', '-v', '-a', imagepath, args.input+'expanded_image'])
+		#tsk_recover -v -a [disk image] [destination]
+		return (out, True)
+	except subprocess.CalledProcessError as e:
+		return (e.output, False)
+
+def move_files_to_bag(csvpath):
+	with open(csvpath, 'rb') as csvfile:
+		reader = csv.reader(csvfile, delimiter=',')
+		csvfile.readline()
+		for row in reader:
+			compnum = row[1]
+			compnum = compnum.strip()
+			fromdir = row[2]
+			fromdirBaselen = len(os.path.dirname(fromdir))+1
+			fromdir = 'expanded_image/'+fromdir[fromdirBaselen:]
+			destDir = glob.glob(args.input+compnum+'*')
+			destDir = destDir[0]+'/data'
+			print destDir
+			print fromdir+'   ---------------------->   '+destDir
+			try:
+				out = subprocess.check_output(['mv', fromdir, destDir])
+			except CalledProcessError as e:
+				out = e.output
+		out = subprocess.check_output(['rm', '-R', 'expanded_image'])
+
+
+def complete_bags():
+	for bag in next(os.walk(args.input))[1]:
+		print bag
+
+		baginfo = open(bag+'/bag-info.txt', 'a')
+		baginfoLine = 'bagging date: '+datetime.datetime.now().date()
+		baginfo.write(baginfoLine)
+		baginfo.close()
+
+		for f in next(os.walk(bag))[1]:
+
+			tagmanifest = open(bag+'/tagmanifest-md5.txt', 'a')
+			tagmanifestLine = 'here will go tsv checksums and paths'
+			tagmanifest.write(tagmanifestLine)
+			tagmanifest.close()
+
 
 #####################
 #
@@ -322,6 +366,12 @@ if conformance_check():
 		else:
 			print csvpath+" contains records that are for more than one object record"
 			tms_when_multiple_objects(csvpath)
+			### to-do: need to figure out if make_bag_fromDFXML() will work for multiple cases
+	for image in imagelist:
+		print image
+		expand_image(image)
+	for csvpath in csvlist:
+		move_files_to_bag(csvpath)
 
 else:
 	print "failed conformance check."
