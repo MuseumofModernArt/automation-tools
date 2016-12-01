@@ -239,6 +239,7 @@ def validate_disk_images(imagepath):
 		return False
 	else:
 		print "uncaught error or condition"
+		print lines
 		return False
 
 
@@ -251,7 +252,7 @@ def run_fiwalk(imagepath):
 		return e.output
 
 def make_bag_from_DFXML(csvpath):
-
+	print "assembling bags from the fiwalk generated MD5 checksums..."
 
 	### right now, it is making one manifest -- how can I make it make one per component, and put it in the right folder?
 	### ok - i have the list of directories within the function now.
@@ -283,25 +284,23 @@ def make_bag_from_DFXML(csvpath):
 							csvpathhh = row[2]
 							trimmedCSVpath = csvpathhh[lengthOfBaseOfPath:]
 							if trimmedCSVpath in filename:
-								print trimmedCSVpath +" WAS FOUND "+filename
+								# print trimmedCSVpath +" WAS FOUND "+filename
 								# get the path to the right compenent dir
-
 								compNum = row[1].strip()
-								print compNum
-								print args.input
 								destDir = glob.glob(args.input+compNum+'*')
-								print "destDir is:"
+								# print "destDir is:"
 								print destDir[0]
 								bagmanifest = open(destDir[0]+'/manifest-md5.txt', 'a')
 								manifestLine = checksum.text+'  '+'data/'+filename+'\n'
-								print manifestLine
+								# print manifestLine
 								bagmanifest.write(manifestLine)
 								bagmanifest.close()
 						csvfile.seek(0)
 
 def expand_image(imagepath):
+	print 'expanding disk image...'
 	try:
-		out = subprocess.check_output(['tsk_recover', '-v', '-a', imagepath, args.input+'expanded_image'])
+		out = subprocess.check_output(['tsk_recover', '-a', imagepath, args.input+'expanded_image'])
 		#tsk_recover -v -a [disk image] [destination]
 		return (out, True)
 	except subprocess.CalledProcessError as e:
@@ -333,7 +332,7 @@ def complete_bags():
 		print bag
 
 		baginfo = open(bag+'/bag-info.txt', 'a')
-		baginfoLine = 'bagging date: '+datetime.datetime.now().date()
+		baginfoLine = 'bagging date: '+str(datetime.datetime.now().date())
 		baginfo.write(baginfoLine)
 		baginfo.close()
 
@@ -372,6 +371,7 @@ if conformance_check():
 		expand_image(image)
 	for csvpath in csvlist:
 		move_files_to_bag(csvpath)
+	complete_bags()
 
 else:
 	print "failed conformance check."
