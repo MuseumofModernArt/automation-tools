@@ -29,8 +29,8 @@ to-do:
 
 - DONE grab the MD5 - write hand assembled bag using the fiwalk generated MD5s in the DFXML
 
-- run 'mmls' (tsk tool) to see if there is a volume map
-	- if there is, get the byte offset
+- DONE run 'mmls' (tsk tool) to see if there is a volume map
+	- DONE if there is, get the byte offset
 
 - DONE: subprocess: tsk_recover -v -a [disk image] [destination]
 - DONE move DPX folders to their appropriate component dir
@@ -41,6 +41,44 @@ parser.add_argument('-i', '--input', required=True, type=str, help='path to disk
 args = parser.parse_args()
 
 
+filesystem_list = [
+'ntfs',
+'NTFS',
+'fat',
+'FAT (Auto Detection)',
+'ext',
+'ExtX (Auto Detection)',
+'iso9660',
+'ISO9660 CD',
+'hfs',
+'HFS+',
+'ufs',
+'UFS (Auto Detection)',
+'raw',
+'Raw Data',
+'swap',
+'Swap Space',
+'fat12',
+'FAT12',
+'fat16',
+'FAT16',
+'fat32',
+'FAT32',
+'exfat',
+'exFAT',
+'ext2',
+'Ext2',
+'ext3',
+'Ext3',
+'ext4',
+'Ext4',
+'ufs1',
+'UFS1',
+'ufs2',
+'UFS2',
+'yaffs2',
+'YAFFS2'
+]
 
 def conformance_check():
 	disk_images = glob.glob(args.input+'*.E01')
@@ -209,7 +247,28 @@ def tms_when_multiple_objects(csvpath):
 			return False
 		return True
 
-
+def get_offset(imagepath):
+	try:
+		out = subprocess.Popen(['mmls', imagepath],stdout=subprocess.PIPE)
+		x = 0
+		for line in iter(out.stdout.readline,''):
+   			newline = line.rstrip()
+   			x = x+1
+   			for item in filesystem_list:
+	   			if item in newline:
+	   				# print newline
+	   				newline = newline.split('   ')
+	   				byte_offset = newline[1]
+	   				volume_description = newline[4]
+	   				print volume_description+" Volume found at byte offset "+byte_offset
+		if x < 2:
+			print "This appears to be a logical image"
+			return False
+		else:
+			print "This appears to be a physical image"
+			return (byte_offset, True)
+	except subprocess.CalledProcessError as e:
+		return (e.output, False)
 
 
 # DISK IMAGE STUFF
@@ -299,12 +358,20 @@ def make_bag_from_DFXML(csvpath):
 
 def expand_image(imagepath):
 	print 'expanding disk image...'
-	try:
-		out = subprocess.check_output(['tsk_recover', '-a', imagepath, args.input+'expanded_image'])
-		#tsk_recover -v -a [disk image] [destination]
-		return (out, True)
-	except subprocess.CalledProcessError as e:
-		return (e.output, False)
+	if get_offset(args.input) is False:
+		print "YASS logical easy"
+		try:
+			out = subprocess.check_output(['tsk_recover', '-a', imagepath, args.input+'expanded_image'])
+			return (out, True)
+		except subprocess.CalledProcessError as e:
+			return (e.output, False)
+	else:
+		print "booo physical images are hard"
+		try:
+			out = subprocess.check_output(['tsk_recover', '-o'+ get_offset(args.input)[0], '-a', imagepath, args.input+'expanded_image'])
+			return (out, True)
+		except subprocess.CalledProcessError as e:
+			return (e.output, False)
 
 def move_files_to_bag(csvpath):
 	with open(csvpath, 'rb') as csvfile:
@@ -344,37 +411,47 @@ def complete_bags():
 			tagmanifest.close()
 
 
+
+
+
+
 #####################
 #
 # main program flow
 #
 # check conformance, and if OK, validate the disk image(s)
-if conformance_check():
-	imagelist, csvlist = conformance_check()
-	print "passed conformance check. Proceeding to disk image validation"
-	# for image in imagelist:
-	# 	# will it exit / fail if image does not validate? it should
-	# 	print validate_disk_images(image)
-	for image in imagelist:
-		print run_fiwalk(image)
-	for csvpath in csvlist:
-		if check_if_same(csvpath):
-			print csvpath+" contains records that are all for the same object record"
-			tms_when_same(csvpath)
-			make_bag_from_DFXML(csvpath)
-		else:
-			print csvpath+" contains records that are for more than one object record"
-			tms_when_multiple_objects(csvpath)
-			### to-do: need to figure out if make_bag_fromDFXML() will work for multiple cases
-	for image in imagelist:
-		print image
-		expand_image(image)
-	for csvpath in csvlist:
-		move_files_to_bag(csvpath)
-	complete_bags()
+# if conformance_check():
+# 	imagelist, csvlist = conformance_check()
+# 	print "passed conformance check. Proceeding to disk image validation"
+# 	# for image in imagelist:
+# 	# 	# will it exit / fail if image does not validate? it should
+# 	# 	print validate_disk_images(image)
+# 	for image in imagelist:
+# 		print run_fiwalk(image)
+# 	for csvpath in csvlist:
+# 		if check_if_same(csvpath):
+# 			print csvpath+" contains records that are all for the same object record"
+# 			tms_when_same(csvpath)
+# 			make_bag_from_DFXML(csvpath)
+# 		else:
+# 			print csvpath+" contains records that are for more than one object record"
+# 			tms_when_multiple_objects(csvpath)
+# 			### to-do: need to figure out if make_bag_fromDFXML() will work for multiple cases
+# 	for image in imagelist:
+# 		print image
+# 		expand_image(image)
+# 	for csvpath in csvlist:
+# 		move_files_to_bag(csvpath)
+# 	complete_bags()
 
-else:
-	print "failed conformance check."
-	raise SystemExit
+# else:
+# 	print "failed conformance check."
+# 	raise SystemExit
 
+# if get_offset(args.input) is False:
+# 	print "YASS logical easy"
+# else:
+# 	print "boo physical images are hard... I think this is the byte offset? "+get_offset(args.input)[0]
+# 	print get_offset(args.input)[0]
 
+expand_image(args.input)
