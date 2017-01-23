@@ -40,6 +40,11 @@ parser = argparse.ArgumentParser(description="Tool for unpacking disk images at 
 parser.add_argument('-i', '--input', required=True, type=str, help='path to disk image submission (dir, not img itself)')
 args = parser.parse_args()
 
+floppy = u'\U0001F4BE'
+magnify = u'\U0001F50D'
+green_check = u'\U00002705'
+fax = u'\U0001F4E0'
+robot = u'\U0001F440'
 
 filesystem_list = [
 'ntfs',
@@ -141,7 +146,7 @@ def tms_when_same(csvpath):
 			if i == 1:
 				objectnumber = row[0]
 
-		print "Pinging the TMS API for object: "+objectnumber
+		print fax+"   ---> pinging the TMS API for object: "+objectnumber
 
 		# get the object metadata
 		object_url = "http://vmsqlsvcs.museum.moma.org/TMSAPI/TmsObjectSvc/TmsObjects.svc/GetTombstoneDataRest/Object/"+objectnumber
@@ -171,11 +176,11 @@ def tms_when_same(csvpath):
 					dirname = str(componentnumber)+"---"+str(componentID)+"---"+str(object_id)
 					dircounter = dircounter+1
 					dirlist.append(dirname)
-					print dirname
+					# print dirname
 				# else:
 				# 	print item['ComponentNumber']+" is not the same as "+componentnumber
 		if componentcounter == dircounter == len(dirlist):
-			print "All components in disk image are accounted for in TMS. \nMaking directories for these components"
+			# print "All components in disk image are accounted for in TMS. \nMaking directories for these components"
 			for item in dirlist:
 				os.makedirs(args.input+item+'/data', 0755)
 			return dirlist
@@ -295,7 +300,7 @@ def validate_disk_images(imagepath):
 
 
 def run_fiwalk(imagepath):
-	print "\nGenerating DFXML"
+	print magnify+"   ---> generating DFXML"
 	try:
 		out = subprocess.check_output(['fiwalk', '-X'+args.input+os.path.basename(os.path.normpath(imagepath))[:-4]+'.xml', imagepath])
 		return out
@@ -304,182 +309,219 @@ def run_fiwalk(imagepath):
 
 def get_offset(imagepath):
 	try:
-		out = subprocess.Popen(['mmls', imagepath],stdout=subprocess.PIPE)
-		x = 0
+		out = subprocess.Popen(['mmls', imagepath],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 		volume_dictionary = {}
 		new_volume_dictionary = {}
-		for line in iter(out.stdout.readline,''):
-   			lineofoutput = line.rstrip()
-   			x = x+1
-   			for item in filesystem_list:
-	   			if item in lineofoutput:
-	   				# print "MATCHED!!!"+lineofoutput
-	   				lineofoutput = lineofoutput.split('   ')
-	   				# print lineofoutput
-	   				byte_offset = lineofoutput[1].lstrip('0')
-	   				volume_description = lineofoutput[4]
-	   				# print volume_description+" Volume found at byte offset "+byte_offset
-	   				volume_dictionary[volume_description] = byte_offset
-	   	for vol, offset in volume_dictionary.iteritems():
-	   		print 'checking '+vol+' at '+offset+" offset in "+imagepath
-			out = subprocess.Popen(['fsstat', '-o '+offset, imagepath],stdout=subprocess.PIPE)
+		logical = False
+		for line in iter(out.stderr.readline,''):
+	   			lineofoutput = line.rstrip()
+	   			if 'Cannot determine partition type' in lineofoutput:
+	   				logical = True
+		if logical is True:
+			
+			out = subprocess.Popen(['fsstat', imagepath],stdout=subprocess.PIPE)
 			for line in iter(out.stdout.readline,''):
 				lineofoutput = line.rstrip()
 				# print lineofoutput
-				if 'Volume Name:' in lineofoutput or 'Volume Label' in lineofoutput:
-					print 'found a match!'
+				if 'Volume Name:' in lineofoutput or 'Volume Label' in lineofoutput and 'Root Directory' not in lineofoutput:
+					lineofoutput = lineofoutput.split(':')
+					# print lineofoutput
+					if lineofoutput is not '':
+						volumename = lineofoutput[1][1:]
+				if 'File System Type' in lineofoutput:
 					lineofoutput = lineofoutput.split(':')
 					if lineofoutput is not '':
-						print lineofoutput
-						volumename = lineofoutput[1][1:]
-						if offset not in new_volume_dictionary:
-							new_volume_dictionary[offset] = volumename, vol
-		print new_volume_dictionary
-
-
-		if x < 2:
-			return False
+						filesystem = lineofoutput[1][1:]
+			new_volume_dictionary['0'] = volumename, filesystem
+			return (new_volume_dictionary, False)
 		else:
-			# print "This appears to be a physical image"
+			
+			for line in iter(out.stdout.readline,''):
+				lineofoutput = line.rstrip()
+	   			for item in filesystem_list:
+		   			if item in lineofoutput:
+		   				# print "MATCHED!!!"+lineofoutput
+		   				lineofoutput = lineofoutput.split('   ')
+		   				# print lineofoutput
+		   				byte_offset = lineofoutput[1].lstrip('0')
+		   				volume_description = lineofoutput[4]
+		   				# print volume_description+" Volume found at byte offset "+byte_offset
+		   				volume_dictionary[volume_description] = byte_offset
+			   	for vol, offset in volume_dictionary.iteritems():
+			   		# print 'checking '+vol+' at '+offset+" offset in "+imagepath
+					out = subprocess.Popen(['fsstat', '-o '+offset, imagepath],stdout=subprocess.PIPE)
+					for line in iter(out.stdout.readline,''):
+						lineofoutput = line.rstrip()
+						# print lineofoutput
+						if 'Volume Name:' in lineofoutput or 'Volume Label' in lineofoutput:
+							# print 'found a match!'
+							lineofoutput = lineofoutput.split(':')
+							if lineofoutput is not '':
+								# print lineofoutput
+								volumename = lineofoutput[1][1:]
+								if offset not in new_volume_dictionary:
+									new_volume_dictionary[offset] = volumename, vol
 			return (new_volume_dictionary, True)
-			# print "\n\n\n\n\n\n\nHere comes the volume dictionary"
-			# print volume_dictionary
-			# print "that was the volume dictionary\n\n\n\n\n\n\n"
+		# print new_volume_dictionary
+			
 	except subprocess.CalledProcessError as e:
+		print "EXCEPTION!!!!! \n\n\n\n\n\n\n\n\n\n\n"
 		return (e.output, False)
 
 def make_bag_from_DFXML(csvpath):
-	print "assembling bags from the fiwalk generated MD5 checksums..."
-
+	# print "assembling bags from the fiwalk generated MD5 checksums..."
 	# need to accomodate for multi-volume, physical images
 	# get volume name from CSV
-
 	tree = ET.parse(csvpath[:-4]+".xml")
 	root = tree.getroot()
 	ns = "{http://www.forensicswiki.org/wiki/Category:Digital_Forensics_XML}"
 
 	imagepath = csvpath[:-3]+"E01"
 
-	
-
-	# for volume in root.iter(ns+'volume'):
-	# 	# print 'here is the volume offset'
-	# 	dfxmloffset = int(volume[0].text)
-	# 	for vol, offset in volume_dictionary.iteritems():
-	# 		# print vol
-	# 		multipliedOffset = int(offset)*512
-	# 		# print multipliedOffset
-	# 		# print dfxmloffset
-	# 		if dfxmloffset == multipliedOffset:
-	# 			print "matched"
-	# 			print offset
-	# 			print "with"
-	# 			print dfxmloffset
-		
 
 	# it appears that fiwalk doesn't display the volume name for *all* filesystems in the dfxml... 
 	# so instead of relying on name, we will run get_offset() to get the volume dictionary, and then...
 	# find iterate the volumes
 
-	new_volume_dictionary = get_offset(imagepath)[0]
+	offset_dict = get_offset(imagepath)[0]
+	# print offset_dict
+	for entry, values in offset_dict.iteritems():
+		offset = entry
+		dictvolume = values[0]
+		filesystem = values[1]
+		multipled_dictionary_offset = int(offset)*512
+		# print multipled_dictionary_offset
+		for volume in root.iter(ns+'volume'):
+			dfxmloffset = int(volume[0].text)
+	
+			if dfxmloffset == multipled_dictionary_offset:
+				# do the thang
+				# print "found offset match"
 
-	print new_volume_dictionary
-
-	for item in new_volume_dictionary.iteritems():
-		print item
-			
-	# for volume in root.iter(ns+'volume'):
-		
-	# 	for fileobject in volume.iter(ns+'fileobject'):
-	# 		print "Looking at the volume at offset "+volume[4].text+" to try and find its name"
-	# 		volgen = (v for v in fileobject.iter(ns+'filename') if 'Volume Label Entry' in v.text)
-	# 		for vol in volgen:
-	# 			print vol.text
-	# 			print 'yes yes yes match'
-	# 	print "what now\n\n\n\n\n\n\n\n\n"
-		
-
-	for fileobject in root.iter(ns+'fileobject'):
-
-
-		## only do this for files, not dirs
-		filegen = (f for f in fileobject.iter(ns+'name_type') if f.text != 'd')
-		for f in filegen:
-			# for every allocated file that is an 'actual' file (not a directory, . or ..)
-			for allocationStatus in fileobject.iter(ns+'alloc'):
-				filename = fileobject[1].text
-				# print "looking at file...\n"
-				# print f
-				# print "\nlet's see what the parent node of the file is"
-				# parent_map = dict((f, p) for p in tree.getiterator() for f in p)
-				# for item in parent_map:
-				# 	print item
-				generator = (checksum for checksum in fileobject.iter(ns+'hashdigest') if checksum.attrib['type'] == 'md5')
-				for checksum in generator:
-					# for each file that is a real file with a checksum, 
-					# open the CSV
-					# for each row in the CSV
-						# see if row[2] is in filename (from DFXML)
-							# if it is, then find the dir that starts with the comp number for this CSV row
-							# write the manifest to this dir
-					with open(csvpath, 'rb') as csvfile:
+				# print dfxmloffset
+				# print offset
+				# print multipled_dictionary_offset
+				
 
 
-						reader = csv.reader(csvfile, delimiter=',')
-						for row in reader:
+				for fileobject in volume.iter(ns+'fileobject'):
+					## only do this for files, not dirs
+					# print volume.attrib
+					filegen = (f for f in fileobject.iter(ns+'name_type') if f.text != 'd')
+					for f in filegen:
+						# print f
+						# for every allocated file that is an 'actual' file (not a directory, . or ..)
+						for allocationStatus in fileobject.iter(ns+'alloc'):
+							filename = fileobject[1].text
 
-							# print os.path.dirname(filename)
-							lengthOfBaseOfPath = len(os.path.dirname(row[2]))+1
-							csvpathhh = row[2]
-							trimmedCSVpath = csvpathhh[lengthOfBaseOfPath:]
-							if trimmedCSVpath in filename:
-								# print trimmedCSVpath +" WAS FOUND "+filename
-								# get the path to the right compenent dir
-								compNum = row[1].strip()
-								destDir = glob.glob(args.input+compNum+'*')
-								# print "\n\n\n\ndestDir is:"
-								# print destDir
-								# print destDir[0]
-								bagmanifest = open(destDir[0]+'/manifest-md5.txt', 'a')
-								manifestLine = checksum.text+'  '+'data/'+filename+'\n'
-								# print manifestLine
-								bagmanifest.write(manifestLine)
-								bagmanifest.close()
-						csvfile.seek(0)
+							generator = (checksum for checksum in fileobject.iter(ns+'hashdigest') if checksum.attrib['type'] == 'md5')
+							for checksum in generator:
+								# for each file that is a real file with a checksum, 
+								# open the CSV
+								# for each row in the CSV
+									# see if row[2] is in filename (from DFXML)
+										# if it is, then find the dir that starts with the comp number for this CSV row
+										# write the manifest to this dir
+								# print "this is an allocated file with a checksum "+checksum.text
+								with open(csvpath, 'rb') as csvfile:
+
+									reader = csv.reader(csvfile, delimiter=',')
+									for row in reader:
+
+										# print os.path.dirname(filename)
+										lengthOfBaseOfPath = len(os.path.dirname(row[2]))+1
+										csvpathhh = row[2]
+										trimmedCSVpath = csvpathhh[lengthOfBaseOfPath:]
+
+
+										basepath = os.path.dirname(csvpathhh).split('/')
+										# print basepath
+										if len(basepath) > 1:
+											volname = basepath[2].replace("\\", "")
+
+											# print basepath
+											# print volname
+											# print dictvolume
+											if volname == dictvolume:
+												# print "match\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+
+												if trimmedCSVpath in filename:
+													# print trimmedCSVpath +" WAS FOUND "+filename
+													# get the path to the right compenent dir
+													compNum = row[1].strip()
+													destDir = glob.glob(args.input+compNum+'*')
+													# print "\n\n\n\ndestDir is:"
+													# print destDir
+													# print destDir[0]
+													# print "gonna put a manifest here: "+destDir
+
+													bagmanifest = open(destDir[0]+'/manifest-md5.txt', 'a')
+													manifestLine = checksum.text+'  '+'data/'+filename+'\n'
+													# print "with this line: "+manifestLine
+													# print manifestLine
+													bagmanifest.write(manifestLine)
+													bagmanifest.close()
+									csvfile.seek(0)
 
 
 
 
 def expand_image_and_move_files(imagepath):
-	print 'expanding disk image...'+imagepath
-	print imagelist
-	if get_offset(imagepath) is False:
-		print "This appears to be a logical image"
+	# print imagelist
+	if get_offset(imagepath)[1] is False:
+		print floppy+"   ---> expanding logical image "+hilite(imagepath, "green", "bold")
 		try:
 			out = subprocess.check_output(['tsk_recover', '-a', imagepath, args.input+'expanded_image'])
 			ls = subprocess.check_output(['ls', args.input+'expanded_image'])
-			print ls
+			# print ls
+			csvpath = imagepath[:-3]+'csv'
+			# print "oppening csv "+csvpath
+			with open(csvpath, 'rb') as csvfile:
+				reader = csv.reader(csvfile, delimiter=',')
+				csvfile.readline()
+				for row in reader:
+					compnum = row[1]
+					compnum = compnum.strip()
+					fromdir = row[2]
 
+					basepath = os.path.dirname(fromdir).split('/')
+
+					fromdirBaselen = len(os.path.dirname(fromdir))+1
+					fromdir = 'expanded_image/'+fromdir[fromdirBaselen:]
+					# print fromdir
+					# print "\n\n\n\n\n\n\nthis is the fromdir: \n"+fromdir+"\nthat was the fromdir\n\n\n\n\n\n"
+					destDir = glob.glob(args.input+compnum+'*')
+					destDir = destDir[0]+'/data'
+					# print destDir
+					try:
+						# print "Moving: \n"+args.input+fromdir+'\nto ---------------------->   \n'+destDir+'\n'
+						out = subprocess.check_output(['mv', args.input+fromdir, destDir])
+					except subprocess.CalledProcessError as e:
+						out = hilite(e.output, "red", "bold")
+			# print "deleting "+ args.input+'expanded_image'
+			out = subprocess.check_output(['rm', '-R', args.input+'expanded_image'])
 			return (out, True)
 		except subprocess.CalledProcessError as e:
 			return (e.output, False)
+
 	else:
-		print "This is a physical image"
+		print floppy+"   ---> looking for volumes in physical image: "+hilite(os.path.basename(imagepath), "green", "bold")
 		# print get_offset(args.input)
 		offset_dict = get_offset(imagepath)[0]
-		print offset_dict
+		# print offset_dict
 		for entry, values in offset_dict.iteritems():
 			offset = entry
 			volume = values[0]
 			filesystem = values[1]
-			print "There is a "+filesystem+" volume called "+volume+" at byte offset "+offset
+			print "         restoring a "+filesystem+" filesystem found at byte offset "+hilite(int(offset)*512, "green", "bold")
+			# print "There is a "+filesystem+" volume called "+volume+" at byte offset "+offset
 			try:
 				out = subprocess.check_output(['tsk_recover', '-o'+ offset, '-a', imagepath, args.input+offset+'---expanded_image'])
 				# return (out, True)
 
 				# this is all from below
 				csvpath = imagepath[:-3]+'csv'
-				print "oppening csv "+csvpath
+				# print "oppening csv "+csvpath
 				with open(csvpath, 'rb') as csvfile:
 					reader = csv.reader(csvfile, delimiter=',')
 					csvfile.readline()
@@ -488,31 +530,26 @@ def expand_image_and_move_files(imagepath):
 						compnum = compnum.strip()
 						fromdir = row[2]
 
+						basepath = os.path.dirname(fromdir).split('/')
+						volname = basepath[2].replace("\\", "")
 
+						if volname == volume:
 
+							fromdirBaselen = len(os.path.dirname(fromdir))+1
+							fromdir = offset+'---expanded_image/'+fromdir[fromdirBaselen:]
+							# print fromdir
+							# print "\n\n\n\n\n\n\nthis is the fromdir: \n"+fromdir+"\nthat was the fromdir\n\n\n\n\n\n"
+							destDir = glob.glob(args.input+compnum+'*')
+							destDir = destDir[0]+'/data'
+							# print destDir
+							try:
+								# print "Moving: \n"+args.input+fromdir+'\nto ---------------------->   \n'+destDir+'\n'
+								out = subprocess.check_output(['mv', args.input+fromdir, destDir])
+							except subprocess.CalledProcessError as e:
+								out = hilite(e.output, "red", "bold")
 
-
-						# TODO NEXT ! act only if the Volume name from the path in the CSV matches the curently iterating volume name in the dictionary
-
-
-
-
-
-
-
-						fromdirBaselen = len(os.path.dirname(fromdir))+1
-						fromdir = offset+'---expanded_image/'+fromdir[fromdirBaselen:]
-						# print "\n\n\n\n\n\n\nthis is the fromdir: \n"+fromdir+"\nthat was the fromdir\n\n\n\n\n\n"
-						destDir = glob.glob(args.input+compnum+'*')
-						destDir = destDir[0]+'/data'
-						# print destDir
-						try:
-							print "Moving: \n"+args.input+fromdir+'\nto ---------------------->   \n'+destDir+'\n'
-							out = subprocess.check_output(['mv', args.input+fromdir, destDir])
-						except subprocess.CalledProcessError as e:
-							out = hilite(e.output, "red", "bold")
-					print "deleting "+ args.input+offset+'---expanded_image'
-					# out = subprocess.check_output(['rm', '-R', args.input+offset+'---expanded_image'])
+					# print "deleting "+ args.input+offset+'---expanded_image'
+					out = subprocess.check_output(['rm', '-R', args.input+offset+'---expanded_image'])
 
 			except subprocess.CalledProcessError as e:
 				print "\n\n\n\nEXCEPTION!"
@@ -529,7 +566,7 @@ def md5(fname):
 
 def complete_bags():
 	for bag in next(os.walk(args.input))[1]:
-		print bag
+		# print bag
 
 		baginfo = open(args.input+bag+'/bag-info.txt', 'a+')
 		baginfoLine = 'bagging date: '+str(datetime.datetime.now().date())
@@ -562,32 +599,24 @@ def complete_bags():
 # main program flow /\/\/\/\/\/\/ 
 #
 # check conformance, and if OK, validate the disk image(s)
+print '\n'
+print robot+"   MoMA DPX Disk Image unpacker   "+robot+"\n"
+
 imagelist, csvlist, state = conformance_check()
 if state is True:
-	# print "this is the image list"
-	# print imagelist
-	# print "\n\n\n\n\n\n"
-	print "File attendence conformance check: "+hilite("passed", "green", "bold")
-	# for image in imagelist:
-	# 	# will it exit / fail if image does not validate? it should
-	# 	print "Proceeding to validate "+image
-	# 	print validate_disk_images(image)
+	print green_check+'   ---> passed file name and attendence QA'
 	for image in imagelist:
-		print run_fiwalk(image)
+		run_fiwalk(image)
 	for csvpath in csvlist:
 		if check_if_same(csvpath):
-			print csvpath+" contains components that belong to one object"
 			tms_when_same(csvpath)
-			print make_bag_from_DFXML(csvpath)
+			make_bag_from_DFXML(csvpath)
 		else:
-			print csvpath+" contains components that are for more than one object record"
 			tms_when_multiple_objects(csvpath)
-			### to-do: need to figure out if make_bag_fromDFXML() will work for multiple cases
 	for image in imagelist:
 		expand_image_and_move_files(image)
 	complete_bags()
-	print "All done!"
-	print u'\U0001f604'
+	print '\n'+u'\U0001f604'+"   all done!\n\n"
 
 
 
